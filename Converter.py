@@ -35,11 +35,18 @@ rem_num = rounded_64ths % 64
 fraction_string = simplify_fraction(rem_num, 64)
 
 # 5. Final Print
+output = ""
+
+# Only add the whole number if it exists
 if whole_inches > 0:
-    print("Result: " + str(whole_inches) + " " + fraction_string + " inches")
-else:
-    print("Result: " + fraction_string + " inches")
+    output += str(whole_inches) + " "
+
+# Add the fraction
+output += fraction_string + " inches"
+
+print("Result: " + output)
 
 if leftover != 0:
     # We round this to 4 decimal places so it's not a giant string of numbers
+
     print("Adjustment made: " + str(round(leftover, 4)) + " (64ths) were rounded.")
