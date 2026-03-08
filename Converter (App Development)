@@ -3,93 +3,139 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
-from kivy.uix.togglebutton import ToggleButton
+from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.core.window import Window
 
-class FractionConverter(App):
-    def build(self):
-        # Main Layout
-        self.layout = BoxLayout(orientation='vertical', padding=30, spacing=15)
+# Keeps the keyboard from covering your work
+Window.softinput_mode = 'below_target'
 
-        # 1. Unit Selection (Inches or MM)
-        self.unit_box = BoxLayout(orientation='horizontal', size_hint_y=None, height=50, spacing=10)
-        self.btn_inch = ToggleButton(text='INCHES', group='units', state='down', allow_no_selection=False)
-        self.btn_mm = ToggleButton(text='MILLIMETERS', group='units', allow_no_selection=False)
-        self.unit_box.add_widget(self.btn_inch)
-        self.unit_box.add_widget(self.btn_mm)
-        self.layout.add_widget(self.unit_box)
+class AppSettings:
+    denominator = 64
 
-        # 2. Denominator Input
-        self.layout.add_widget(Label(text="Precision (e.g., 16, 32, 64):", size_hint_y=None, height=30))
-        self.den_input = TextInput(text="64", multiline=False, input_filter='int', halign='center', font_size=24)
-        self.layout.add_widget(self.den_input)
-
-        # 3. Value Input
-        self.layout.add_widget(Label(text="Enter Value to Convert:", size_hint_y=None, height=30))
-        self.val_input = TextInput(hint_text="e.g. 1.25 or 25,4", multiline=False, halign='center', font_size=24)
-        self.layout.add_widget(self.val_input)
-
-        # 4. Action Buttons (Calculate & Clear)
-        self.actions = BoxLayout(orientation='horizontal', spacing=10, size_hint_y=None, height=60)
+class SettingsScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Background is black by default in Kivy screens
+        layout = BoxLayout(orientation='vertical', padding=50, spacing=30)
         
-        self.calc_btn = Button(text="CALCULATE", background_color=(0, 0.6, 0, 1), bold=True)
-        self.calc_btn.bind(on_press=self.perform_math)
+        layout.add_widget(Label(text="PRECISION", font_size=50, bold=True))
+        layout.add_widget(Label(text="Set Denominator\n(16, 32, 64, 128)", font_size=35, halign='center'))
         
-        self.clear_btn = Button(text="CLEAR", background_color=(0.8, 0, 0, 1))
-        self.clear_btn.bind(on_press=self.clear_fields)
+        # Dark box with white text for settings
+        self.prec_input = TextInput(text=str(AppSettings.denominator), multiline=False, 
+                                    input_filter='int', font_size=80, halign='center',
+                                    background_color=(0.1, 0.1, 0.1, 1), foreground_color=(1, 1, 1, 1),
+                                    cursor_color=(1, 1, 1, 1))
+        layout.add_widget(self.prec_input)
         
-        self.actions.add_widget(self.calc_btn)
-        self.actions.add_widget(self.clear_btn)
-        self.layout.add_widget(self.actions)
+        save_btn = Button(text="SAVE & BACK", size_hint_y=None, height=140, 
+                          background_color=(0, 0.7, 0, 1), font_size=40)
+        save_btn.bind(on_press=self.save_settings)
+        layout.add_widget(save_btn)
+        
+        self.add_widget(layout)
 
-        # 5. Result Display
-        self.result_lbl = Label(text="--- Result ---", font_size=28, bold=True, color=(1, 1, 1, 1))
-        self.layout.add_widget(self.result_lbl)
+    def save_settings(self, instance):
+        try:
+            val = int(self.prec_input.text)
+            AppSettings.denominator = val if val > 0 else 64
+        except:
+            AppSettings.denominator = 64
+        self.manager.current = 'main'
 
-        return self.layout
+class MainScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.layout = BoxLayout(orientation='vertical', padding=25, spacing=15)
 
-    def simplify_fraction(self, num, den):
+        # Header Section
+        nav = BoxLayout(size_hint_y=None, height=120)
+        nav.add_widget(Label(text="MEASURE", font_size=45, bold=True))
+        settings_btn = Button(text="SETTINGS", size_hint_x=None, width=280, font_size=30, 
+                              background_color=(0.3, 0.3, 0.3, 1))
+        settings_btn.bind(on_press=lambda x: setattr(self.manager, 'current', 'settings'))
+        nav.add_widget(settings_btn)
+        self.layout.add_widget(nav)
+
+        # MM Field: Blue text on Black background
+        self.layout.add_widget(Label(text="MILLIMETERS", font_size=30, color=(0.7, 0.7, 1, 1)))
+        self.mm_input = TextInput(hint_text="0", multiline=False, font_size=75, halign='center',
+                                  background_color=(0.1, 0.1, 0.1, 1), foreground_color=(0.5, 0.8, 1, 1),
+                                  cursor_color=(1, 1, 1, 1))
+        self.mm_input.bind(text=self.update_from_mm)
+        self.layout.add_widget(self.mm_input)
+
+        # Decimal Inch Field: Peach text on Black background
+        self.layout.add_widget(Label(text="DECIMAL INCHES", font_size=30, color=(1, 0.7, 0.7, 1)))
+        self.inch_input = TextInput(hint_text="0.0", multiline=False, font_size=75, halign='center',
+                                    background_color=(0.1, 0.1, 0.1, 1), foreground_color=(1, 0.7, 0.5, 1),
+                                    cursor_color=(1, 1, 1, 1))
+        self.inch_input.bind(text=self.update_from_inch)
+        self.layout.add_widget(self.inch_input)
+
+        # FRACTION FIELD: Fixed! Lime text on Black background
+        self.layout.add_widget(Label(text="FRACTION (e.g. 1 1/4)", font_size=30, color=(0.7, 1, 0.7, 1)))
+        self.frac_input = TextInput(hint_text="0 0/0", multiline=False, font_size=75, halign='center',
+                                    background_color=(0.1, 0.1, 0.1, 1), foreground_color=(0.2, 1, 0.2, 1),
+                                    cursor_color=(1, 1, 1, 1))
+        self.frac_input.bind(text=self.update_from_frac)
+        self.layout.add_widget(self.frac_input)
+
+        self.add_widget(self.layout)
+
+    def simplify(self, num, den):
         while num > 0 and num % 2 == 0 and den % 2 == 0:
             num //= 2
             den //= 2
         return "" if num == 0 else f"{num}/{den}"
 
-    def clear_fields(self, instance):
-        self.val_input.text = ""
-        self.result_lbl.text = "--- Result ---"
-        self.result_lbl.color = (1, 1, 1, 1)
+    def update_from_mm(self, instance, value):
+        if self.mm_input.focus:
+            try:
+                v = float(value.replace(",", "."))
+                inch_val = v / 25.4
+                self.inch_input.text = str(round(inch_val, 4))
+                self.frac_input.text = self.calc_frac_string(inch_val)
+            except: pass
 
-    def perform_math(self, instance):
-        try:
-            # Handle decimal commas and dots
-            raw_den = self.den_input.text.replace(",", ".")
-            raw_val = self.val_input.text.replace(",", ".")
-            
-            denominator = int(float(raw_den))
-            user_input = float(raw_val)
+    def update_from_inch(self, instance, value):
+        if self.inch_input.focus:
+            try:
+                v = float(value.replace(",", "."))
+                self.mm_input.text = str(round(v * 25.4, 4))
+                self.frac_input.text = self.calc_frac_string(v)
+            except: pass
 
-            # Check which unit is selected
-            if self.btn_mm.state == 'down':
-                raw_units = (user_input / 25.4) * denominator
-            else:
-                raw_units = user_input * denominator
+    def update_from_frac(self, instance, value):
+        if self.frac_input.focus:
+            try:
+                parts = value.split()
+                dec = 0.0
+                for p in parts:
+                    if "/" in p:
+                        n, d = p.split("/")
+                        dec += float(n) / float(d)
+                    else:
+                        dec += float(p)
+                self.inch_input.text = str(round(dec, 4))
+                self.mm_input.text = str(round(dec * 25.4, 4))
+            except: pass
 
-            rounded_units = int(round(raw_units))
-            whole_inches = rounded_units // denominator
-            rem_num = rounded_units % denominator
-            fraction = self.simplify_fraction(rem_num, denominator)
+    def calc_frac_string(self, decimal_inch):
+        total_units = int(round(decimal_inch * AppSettings.denominator))
+        whole = total_units // AppSettings.denominator
+        rem = total_units % AppSettings.denominator
+        frac = self.simplify(rem, AppSettings.denominator)
+        res = f"{whole}" if whole > 0 else ""
+        if frac: res += f" {frac}" if res else frac
+        return res if res else "0"
 
-            # Formatting result
-            res = f"{whole_inches}" if whole_inches > 0 else ""
-            if fraction:
-                res += f" {fraction}" if res else fraction
-            
-            final_text = f"{res if res else '0'} inches"
-            self.result_lbl.text = final_text
-            self.result_lbl.color = (0.2, 1, 0.2, 1) # Success Green
-            
-        except (ValueError, ZeroDivisionError):
-            self.result_lbl.text = "Invalid Input!"
-            self.result_lbl.color = (1, 0.2, 0.2, 1) # Error Red
+class ConverterApp(App):
+    def build(self):
+        sm = ScreenManager()
+        sm.add_widget(MainScreen(name='main'))
+        sm.add_widget(SettingsScreen(name='settings'))
+        return sm
 
 if __name__ == "__main__":
-    FractionConverter().run()
+    ConverterApp().run()
